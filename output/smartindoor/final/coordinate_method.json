@@ -1,0 +1,5 @@
+{
+  "configuration": "KNN k=3, campus",
+  "regressor": "KNN k=3",
+  "structure": "campus"
+}
