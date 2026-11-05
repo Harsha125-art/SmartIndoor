@@ -1,0 +1,114 @@
+Support Vector Machine
+Model Timer: 16.59 seconds
+
+Totals Output:
+Mean Coordinate Error: 45.03 +/- 24.09 meters
+Standard Error: 172698.51 meters
+Building Percent Error: 0.29%
+Floor Percent Error: 0.81%
+
+
+Phone ID: 22
+Mean Coordinate Error: 52.88 +/- 26.68 meters
+Standard Error: 8039.98 meters
+Building Percent Error: 1.33%
+Floor Percent Error: 1.33%
+Prob that Coordinate Error Less than 10m: 2.67%
+
+Phone ID: 8
+Mean Coordinate Error: 34.63 +/- 18.37 meters
+Standard Error: 6859.93 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.51%
+Prob that Coordinate Error Less than 10m: 3.54%
+
+Phone ID: 23
+Mean Coordinate Error: 58.37 +/- 17.69 meters
+Standard Error: 11802.58 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 1.49%
+Prob that Coordinate Error Less than 10m: 0.00%
+
+Phone ID: 24
+Mean Coordinate Error: 47.65 +/- 26.36 meters
+Standard Error: 3716.47 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 3.85%
+
+Phone ID: 14
+Mean Coordinate Error: 38.66 +/- 23.09 meters
+Standard Error: 39400.96 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.98%
+Prob that Coordinate Error Less than 10m: 6.97%
+
+Phone ID: 13
+Mean Coordinate Error: 50.11 +/- 25.00 meters
+Standard Error: 44559.76 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.34%
+Prob that Coordinate Error Less than 10m: 1.91%
+
+Phone ID: 19
+Mean Coordinate Error: 48.12 +/- 25.08 meters
+Standard Error: 9243.35 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.52%
+Prob that Coordinate Error Less than 10m: 3.65%
+
+Phone ID: 7
+Mean Coordinate Error: 35.75 +/- 15.83 meters
+Standard Error: 11404.87 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 3.76%
+
+Phone ID: 11
+Mean Coordinate Error: 49.41 +/- 20.84 meters
+Standard Error: 4941.31 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 2.00%
+
+Phone ID: 18
+Mean Coordinate Error: 38.01 +/- 18.17 meters
+Standard Error: 3003.18 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 0.00%
+
+Phone ID: 10
+Mean Coordinate Error: 44.19 +/- 19.69 meters
+Standard Error: 3137.36 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 1.41%
+
+Phone ID: 6
+Mean Coordinate Error: 49.35 +/- 23.04 meters
+Standard Error: 12682.41 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 3.50%
+
+Phone ID: 3
+Mean Coordinate Error: 37.71 +/- 17.62 meters
+Standard Error: 4906.82 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.77%
+Prob that Coordinate Error Less than 10m: 3.85%
+
+Phone ID: 1
+Mean Coordinate Error: 62.62 +/- 36.02 meters
+Standard Error: 6876.81 meters
+Building Percent Error: 8.82%
+Floor Percent Error: 9.80%
+Prob that Coordinate Error Less than 10m: 0.00%
+
+Phone ID: 16
+Mean Coordinate Error: 60.65 +/- 8.47 meters
+Standard Error: 2122.72 meters
+Building Percent Error: 0.00%
+Floor Percent Error: 0.00%
+Prob that Coordinate Error Less than 10m: 0.00%
