@@ -143,6 +143,7 @@ python main.py
 | `python main.py --tune` | Also repeats the finalist tuning, about 40 minutes more |
 | `python main.py --original` | Runs the original 64-setup 3-fold experiment |
 | `python main.py --baseline` | Runs the 2019 baseline |
+| `python -m smartindoor.clustering` | Runs the separate clustering check on the training file |
 | `streamlit run smartindoor/dashboard.py` | Opens the dashboard |
 
 The dashboard takes a fingerprint as JSON or a one-row CSV, then predicts the building and floor with a confidence score. It classifies supplied signals and does not scan live Wi-Fi. The saved model was built with scikit-learn 1.9.1, so if it does not load with another version, `python main.py` rebuilds it.
@@ -215,6 +216,10 @@ Of the 105 errors, 102 are the correct building but the wrong floor. Building 1 
 
 In CV, mean error over all rows is 11.04 ± 3.05 m on the stratified folds and 12.37 ± 4.89 m on the other groupings. On the test file, mean error is 6.37 m in Building 0, 10.56 m in Building 1, and 12.15 m in Building 2.
 
+### Clustering check
+
+K-means clustering on the training file, without labels, recovers the buildings better than the 13 classes. Adjusted Rand index (ARI) is 0.62 to 0.63 for buildings with 3 clusters and 0.27 to 0.32 for classes with 13 clusters. Within each building, ARI for floors is 0.27 in Building 0, 0.05 in Building 1, and 0.29 in Building 2. The silhouette score has no peak at 13 clusters, rising from 0.21 there to 0.27 at 30, the most tested. With 13 clusters, normalized mutual information is higher with users (0.42) than with floors (0.26). Results are in `output/smartindoor/final/clustering_*.csv`.
+
 ---
 
 ## 8. Limitations
@@ -249,6 +254,7 @@ SmartIndoor/
 │   ├── tune.py                 # Finalist tuning and recheck
 │   ├── final.py                # Final model and test evaluation
 │   ├── coordinates.py          # Coordinate prediction and paper's method
+│   ├── clustering.py           # Unsupervised check of the classes
 │   ├── experiment.py           # Original 64-setup experiment
 │   └── dashboard.py            # Streamlit dashboard
 ├── Main.m                      # MATLAB entry point
