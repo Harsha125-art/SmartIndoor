@@ -6,278 +6,279 @@
 
 ---
 
-## 1. Project Introduction
+## 1. Project Summary
 
-Indoor localization remains a fundamental challenge in ubiquitous computing and context-aware systems, where satellite-based positioning systems (such as GPS/GNSS) fail due to signal attenuation, multi-path reflections, and severe non-line-of-sight (NLOS) conditions caused by structural walls and floors. 
+GPS is unreliable indoors because walls and floors block and reflect its signals. **SmartIndoor** predicts which building and floor a phone is on using only the Wi-Fi signals it detects, and also estimates its coordinates. It uses the public **UJIIndoorLoc** dataset and classical pattern recognition methods. No deep learning is used.
 
-**SmartIndoor** is a machine learning framework for Wi-Fi fingerprinting-based indoor localization developed on the benchmark **UJIIndoorLoc** dataset. It reformulates the localization problem into a multi-class hierarchical classification task covering 13 discrete campus building-floor pairs. By introducing a fold-fitted **Hybrid Feature Selection (Mutual Information + ANOVA F-score)** mechanism with correlation filtering and rigorous **Grouped Cross-Validation**, SmartIndoor achieves high classification performance (90.2% official validation accuracy, 0.884 macro F1) while preventing spatial and human-subject data leakage.
+The final model is an **RBF SVM with correlation-filtered hybrid feature selection**, which uses 200 of the 520 access points:
+
+| Official test file (1,111 rows) | Result |
+| :--- | :---: |
+| **Accuracy** | **90.55%** (1,006 / 1,111) |
+| **Macro F1** | **0.8866** |
+| **Macro precision / recall** | 0.8851 / 0.9021 |
+| **Correct building** | 99.73% (3 errors) |
+| **Mean coordinate error, all rows** | **8.92 m** |
+| **Mean coordinate error, correct building and floor** | 7.80 m |
+
+**5-fold person-grouped CV** on the training file gives macro F1 0.851 ± 0.100 and accuracy 88.5% ± 6.5%. These are optimistic because the settings were tuned on the same folds. On three other groupings of people, macro F1 is 0.775 ± 0.147 and accuracy is 81.4% ± 11.7%.
+
+**How to read these results:** the final model clearly beats an SVM with no feature selection, and uses 62% fewer access points than plain 1-nearest neighbor while performing about the same. It does not clearly beat 1-nearest neighbor. See [Section 7](#7-results).
 
 ---
 
 ## 2. Problem Statement
 
-Given a sparse, noisy vector of Received Signal Strength Indicator (RSSI) measurements from 520 Wireless Access Points (WAPs):
-$$\mathbf{x} = [r_1, r_2, \dots, r_{520}] \in [-104, 0]^{520} \cup \{-100\}^{520}$$
-where $-100\text{ dBm}$ denotes undetected access points, the objective is to predict the true architectural building and floor location:
-$$y \in \{(\text{Building}, \text{Floor})\} = \{0\_0, 0\_1, 0\_2, 0\_3, 1\_0, 1\_1, 1\_2, 1\_3, 2\_0, 2\_1, 2\_2, 2\_3, 2\_4\}$$
+Each sample is a vector of 520 received signal strengths (RSSI), one per wireless access point, in dBm. In the dataset files, `+100` means the access point was not detected. A scan detects about 18 of the 520 access points on average, so the data is very sparse.
 
-Key challenges in this domain include:
-1. **Severe High-Dimensional Sparsity:** In typical indoor spaces, only 2% to 6% of the 520 access points are detectable in any single reading; the vast majority are undetectable sentinels.
-2. **Subject & Device Heterogeneity:** Signal propagation varies drastically depending on human body orientation, walking patterns, and phone hardware.
-3. **Collinearity and Noise:** Neighboring access points often broadcast redundant, highly correlated RSSI signals, which can cause overfitting in linear models and degrade distance metrics in neighborhood-based classifiers.
+The classification target is one of 13 building-floor classes, written `building_floor`:
+
+`0_0, 0_1, 0_2, 0_3, 1_0, 1_1, 1_2, 1_3, 2_0, 2_1, 2_2, 2_3, 2_4`
+
+Accuracy depends on more than the building's layout, because phones report different signal levels and each person carries a phone differently.
 
 ---
 
-## 3. Dataset Description and Source
+## 3. Dataset
 
-This project benchmarks on the internationally recognized **UJIIndoorLoc** dataset:
-- **Source:** [UCI Machine Learning Repository: UJIIndoorLoc Dataset](https://archive.ics.uci.edu/dataset/310/ujiindoorloc)
-- **Reference:** J. Torres-Sospedra et al., *"UJIIndoorLoc: A New Multi-building and Multi-floor Database for WLAN Fingerprint-based Indoor Localization Problems"*, IPIN 2014.
-- **Coverage:** Universitat Jaume I campus, covering 3 multi-floor buildings across almost 110,000 m²:
-  - **Building 0:** 4 floors (Floors 0–3)
-  - **Building 1:** 4 floors (Floors 0–3)
-  - **Building 2:** 5 floors (Floors 0–4)
-  - **Total discrete locations:** 13 building-floor classes
-- **Splits:**
-  - **Training Split (`trainingData.csv`):** 19,937 reference fingerprints collected by 18 distinct survey users (`USERID` 1–18) across 25 different mobile devices (`PHONEID`).
-  - **Official Validation Split (`validationData.csv`):** 1,111 testing fingerprints gathered separately to emulate real-world query localization.
-- **Features:** 520 continuous WAP attributes (`WAP001` through `WAP520`), with metadata (`LONGITUDE`, `LATITUDE`, `FLOOR`, `BUILDINGID`, `SPACEID`, `RELATIVEPOSITION`, `USERID`, `PHONEID`, `TIMESTAMP`).
+**UJIIndoorLoc**, from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/310/ujiindoorloc), was collected across three buildings at Universitat Jaume I.
 
----
+| | Training file | Official test file (`validationData.csv`) |
+| :--- | :---: | :---: |
+| **Rows** | 19,937 | 1,111 |
+| **People** | 18, identified by `USERID` | 14 per the paper; not identified (`USERID` 0) |
+| **Devices** | 16 | 11, of which 2 also appear in training |
+| **Locations** | Fixed reference points | Arbitrary points |
+| **Timing** | First | Captured months later |
 
-## 4. Existing Project Limitations (Preserved Baseline)
+Each row has 520 signal features plus longitude, latitude, floor, building, and other metadata. Only the 520 signal features are used as model inputs. Coordinates are UTM values in meters.
 
-The legacy baseline (accessible via `python main.py --baseline`) suffered from several methodological flaws common in early literature:
-1. **Validation Split Discarded:** The original script discarded the official 1,111-row test partition (`DROP_VAL = True`) and instead performed a random 80/20 train/test holdout on training data.
-2. **Data Leakage via Random Splitting:** Because measurements from the same user were randomly distributed between train and test sets, the model memorized user-specific walk paths rather than learning environmental Wi-Fi radio propagation.
-3. **Global Feature Selection Leakage:** PCA and variance thresholding were executed prior to evaluation splits, leaking test-set statistics into the training pipeline.
-4. **Ad-Hoc Signal Transformation:** The `-98 dBm` null floor and arbitrary `(1 - X / min(X))` scaling distorted RSSI logarithmic decay curves.
-5. **Linear SVM Misalignment:** The baseline utilized a linear SVM for non-linear RSSI attenuation curves, leading to non-convergence warnings (`max_iter=1000`).
+Reference: J. Torres-Sospedra et al., ["UJIIndoorLoc: A new multi-building and multi-floor database for WLAN fingerprint-based indoor localization problems"](https://doi.org/10.1109/IPIN.2014.7275492), IPIN 2014.
 
 ---
 
-## 5. Our Proposed Improvements
+## 4. Evaluation Method
 
-SmartIndoor addresses each limitation through the following engineering and statistical advances:
+- **Model comparison:** 5-fold CV with `StratifiedGroupKFold` on the training file, grouped by `USERID`. No person appears on both sides of a fold, and stratification is as close as that grouping allows.
+- **Final test:** the official file is not used to choose or tune any model.
+- **No leakage:** imputation, scaling, and feature selection are fitted inside each training fold.
+- **Reported metrics:** accuracy, macro F1, mean ± SD over folds, confusion matrix, and per-class precision and recall.
 
-| Dimension | Preserved 2019 Baseline | SmartIndoor (Proposed) |
-| :--- | :--- | :--- |
-| **Target Formulation** | Independent Building/Floor classifiers & Lat/Lon regressors | Unified 13-class joint Building-Floor target |
-| **Validation Protocol** | Random 80/20 train holdout (`DROP_VAL=True`) | 3-Fold `StratifiedGroupKFold` on `USERID`, official validation set untouched until test |
-| **Feature Isolation** | PCA fit across all rows before split | Fold-local fit; zero leakage into validation sets |
-| **Feature Selection** | Simple variance threshold / PCA | MI, ANOVA F-Score, Hybrid Ranking, and Correlation Filtering |
-| **Input Feature Hygiene** | Coordinates and metadata present in frames | Strict input isolation: only `WAP001`–`WAP520` used as model features |
-| **Signal Normalization** | Arbitrary division by global minimum | Sentinel `100` mapped to `-100.0 dBm`, standard z-score scaling fit per fold |
-| **Probability Calibration** | None (raw scores/decision functions) | Sigmoid Platt calibration with cross-validation for genuine confidence outputs |
-| **User Interface** | Static matplotlib popups | Production Streamlit interactive web dashboard |
-| **Faculty Integration** | Terminal only | Native MATLAB `Main.m` auto-launcher |
+Folds differ in difficulty and may lack some classes, so macro F1 for each fold covers the classes it contains. The SDs are large partly for this reason. Only users 1 and 11 surveyed Building 0, so results depend heavily on which people are held out.
 
 ---
 
-## 6. Hybrid Feature-Selection Methodology
+## 5. Methods
 
-Wi-Fi access points exhibit complex characteristics: some have linear floor-separation power, while others capture non-linear local multi-path fading. SmartIndoor evaluates four distinct feature selection strategies across four feature budgets ($K \in \{25, 50, 100, 150\}$):
+### Feature selection
 
-1. **Mutual Information (MI):**
-   Measures non-linear dependency between WAP RSSI and the building-floor class:
-   $$I(X_j; Y) = \sum_{y \in Y} \int p(x_j, y) \log \frac{p(x_j, y)}{p(x_j)p(y)} dx_j$$
-2. **ANOVA F-Score:**
-   Evaluates linear variance between class means relative to within-class variance:
-   $$F_j = \frac{\text{MS}_{\text{between}}}{\text{MS}_{\text{within}}}$$
-3. **Hybrid Rank Combination (MI + ANOVA):**
-   Overcomes individual ranking biases by assigning average fractional ranks to both metrics and minimizing their combined rank:
-   $$R_{\text{hybrid}}(X_j) = \text{Rank}(-I(X_j; Y)) + \text{Rank}(-F_j)$$
-4. **Correlation-Filtered Hybrid Ranking:**
-   Iterates through the hybrid-ranked candidates and greedily rejects access points that exhibit Pearson correlation coefficient $|\rho| \ge 0.95$ with any higher-ranked AP already selected. This eliminates redundant colocated beacons.
+1. **Mutual Information (MI):** how much an access point's signal reveals about the class, including non-linear relationships.
+2. **ANOVA F-score:** how much an access point's mean signal differs between classes.
+3. **Hybrid:** adds each access point's MI rank and ANOVA rank, and prefers the lowest total.
+4. **Correlation-filtered hybrid:** goes through the hybrid ranking and rejects any access point with absolute Pearson correlation of 0.95 or more with one already kept.
 
-All scoring and ranking operations are computed **strictly inside each cross-validation training fold**.
+### Models compared
 
----
+- **RBF SVM**, with and without each feature selection method.
+- **Gradient boosting** (`HistGradientBoostingClassifier`).
+- **Two-stage classifiers**, which predict the building and then use that building's own floor model and access points.
+- **Relative signal input**, which expresses each signal relative to the strongest in its scan, to reduce differences between phones.
+- **1-nearest neighbor**, the method from the UJIIndoorLoc paper, as a reference.
 
-## 7. Machine Learning Algorithms
+### Tuning
 
-Four distinct classifier families are evaluated across all feature subsets:
-1. **Support Vector Machine (RBF Kernel):**
-   Maps RSSI fingerprints to an infinite-dimensional Hilbert space to construct optimal maximum-margin hyperplanes ($C=10.0$, $\gamma=\text{scale}$).
-2. **Linear Discriminant Analysis (LDA with Shrinkage):**
-   Projects features onto directions that maximize class separability. Employs Ledoit-Wolf automatic covariance shrinkage (`shrinkage="auto"`, `solver="lsqr"`) to handle high-dimensional collinearity.
-3. **K-Nearest Neighbors (KNN):**
-   Memory-based instance classifier using distance weighting ($k=5$, weights inversely proportional to Euclidean distance).
-4. **Random Forest (RF):**
-   Ensemble of 160 randomized decision trees (`min_samples_leaf=1`, `random_state=42`) providing non-linear bagging robustness.
+Three finalists were tuned on the training file. Their settings were chosen on the 5-fold split and rechecked on three other groupings of people, because the best score on the tuning folds is optimistic. All 18 people appear in every grouping, so this reduces the optimism but does not remove it.
 
----
+| Finalist | Settings searched |
+| :--- | :--- |
+| SVM, filtered hybrid or ANOVA | `C`: 1, 10, 100; `gamma`: scale, 0.001, 0.003, 0.01; access points: 100, 150, 200, 300 |
+| Two-stage gradient boosting with relative input | Learning rate and rounds: 0.1/100, 0.05/200, 0.1/200; leaves: 15, 31; access points: 100, 150, 300 |
 
-## 8. Experimental Methodology & Rationale for 3 Folds
+### Final model choice
 
-### Grouped Cross-Validation (`StratifiedGroupKFold`)
-In real-world deployment, indoor localization systems are queried by unseen users. To guarantee genuine out-of-subject generalization, cross-validation groups samples by `USERID`. 
+The selection rule set in advance took the simplest setup within one SD of the best CV score, which picked SVM with ANOVA. After tuning, the three finalists were effectively tied (macro F1 0.778, 0.775, and 0.768 on the other groupings). **SVM with filtered hybrid was chosen over the rule's pick** because it costs no measurable performance and identifies the building more reliably on those groupings (0.985 vs 0.975). This choice used only the training file.
 
-### Why 3 Folds?
-The UJIIndoorLoc training set contains measurements from 18 unique surveyors (`USERID` 1–18). Users surveyed specific corridors and buildings rather than the entire campus. 
-- With 5 or 10 folds, partitioning 18 users into test folds inevitably leaves at least one training fold missing entire building-floor classes (e.g., no samples for Building 2 Floor 4).
-- With **3 folds**, each fold retains approximately 12 users in training, ensuring 100% representation across all 13 building-floor classes while maintaining strict user-group separation.
+Final settings: `C=1`, `gamma=0.001`, 200 access points, sigmoid calibration with person-grouped folds.
 
-### Double-Blind Final Evaluation
-The official validation split (`validationData.csv`, 1,111 rows) is kept strictly isolated in storage until all 64 model configurations are cross-validated. Only the best model is fitted on training data, calibrated, and evaluated once on the validation dataset.
+### Coordinates
+
+The coordinate model was chosen by lowest mean error on the 5-fold split: **KNN with k=3, distance-weighted**, using the same 200 access points. Alternatives were KNN with other k values, random forest, and SVR, each fitted for the whole campus, per building, or per floor.
 
 ---
 
-## 9. Experimental Results and Analysis
+## 6. How to Run
 
-### Official Untouched Validation Performance
-Evaluated on the official 1,111 validation samples:
+### From MATLAB
 
-| Evaluation Metric | Measured Result |
-| :--- | :---: |
-| **Accuracy** | **90.19%** (1,002 / 1,111) |
-| **Macro F1-Score** | **0.8840** |
-| **Macro Precision** | **0.8808** |
-| **Macro Recall** | **0.8949** |
-
-### Grouped Cross-Validation: Best Model by Architecture
-
-| Model | Winning Feature Selection | Features ($K$) | Grouped-CV Accuracy | Grouped-CV Macro F1 |
-| :--- | :--- | :---: | :---: | :---: |
-| **SVM (RBF)** | Mutual Information | 150 | **0.8660** | **0.8519** |
-| **LDA** | Correlation-Filtered Hybrid | 150 | 0.8556 | 0.8436 |
-| **KNN** | Mutual Information | 150 | 0.8507 | 0.8393 |
-| **Random Forest** | Correlation-Filtered Hybrid | 150 | 0.8420 | 0.8268 |
-
-### Grouped Cross-Validation: Best Configuration per Feature Selection Strategy
-
-| Feature Selection Strategy | Winning Model | Features ($K$) | Grouped-CV Macro F1 |
-| :--- | :--- | :---: | :---: |
-| **Mutual Information** | SVM (RBF) | 150 | **0.8519** |
-| **Correlation-Filtered Hybrid** | LDA | 150 | 0.8436 |
-| **Hybrid (MI + ANOVA)** | SVM (RBF) | 150 | 0.8344 |
-| **ANOVA F-Score** | SVM (RBF) | 150 | 0.8203 |
-
-All 64 experimental permutations are saved in `output/smartindoor/cross_validation_results.csv`.
-
----
-
-## 10. Installation & Setup
-
-### Prerequisites
-- Python 3.10, 3.11, 3.12, 3.13, or 3.14
-- (Optional) MATLAB R2020a or newer
-
-### Setup Virtual Environment
-
-```powershell
-# Clone or navigate to the project directory
-cd Localization_via_WiFi_Fingerprinting-master
-
-# Create and activate a virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# Install required dependencies
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
----
-
-## 11. How to Run the Project
-
-### 1. Run Complete Machine Learning Experiment
-To run all 64 feature-selection/model permutations across 3-fold grouped CV and evaluate on the official validation set:
-```powershell
-python main.py
-```
-*(To run faster with custom folds, use `python main.py --folds 2`)*
-
-### 2. Launch from MATLAB
-Execute `Main.m` directly in MATLAB:
 ```matlab
 >> Main
 ```
-The script will detect your Python environment, execute `main.py`, and stream output to the MATLAB Command Window.
 
-### 3. Launch Interactive Streamlit Dashboard
-```powershell
-streamlit run smartindoor/dashboard.py
+`Main.m` runs everything without intervention and displays the results. The first run creates a Python environment in `.venv` and installs the packages, which needs Python 3.10 or newer and an internet connection. Set the `PYTHON_EXECUTABLE` environment variable to use a specific Python.
+
+### From a terminal
+
+macOS or Linux:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
-Open your browser at `http://localhost:8501` to test Wi-Fi fingerprints via JSON or CSV.
 
-### 4. Run Preserved 2019 Baseline
-To reproduce the legacy baseline for historical comparison:
+Windows PowerShell:
+
 ```powershell
-python main.py --baseline
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python main.py
+```
+
+| Command | What it does |
+| :--- | :--- |
+| `python main.py` | Runs the full pipeline, including the official test file |
+| `python main.py --no-test` | Runs the CV stages only, without reading the test file |
+| `python main.py --tune` | Also repeats the finalist tuning, about 40 minutes more |
+| `python main.py --original` | Runs the original 64-setup 3-fold experiment |
+| `python main.py --baseline` | Runs the 2019 baseline |
+| `python -m smartindoor.clustering` | Runs the separate clustering check on the training file |
+| `streamlit run smartindoor/dashboard.py` | Opens the dashboard |
+
+The dashboard takes a fingerprint as JSON or a one-row CSV, then predicts the building and floor with a confidence score. It classifies supplied signals and does not scan live Wi-Fi. The saved model was built with scikit-learn 1.9.1, so if it does not load with another version, `python main.py` rebuilds it.
+
+---
+
+## 7. Results
+
+### Official test file
+
+| Method | Accuracy | Macro F1 | Building errors | Mean error, all rows | Mean error, correct location |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Final model** | **90.55%** | **0.887** | **3** | **8.92 m** | **7.80 m** |
+| 1-nearest neighbor, our rerun of the paper's method | 90.91% | 0.894 | 4 | 9.20 m | 7.63 m |
+| Original SmartIndoor model (SVM, MI, 150 access points) | 90.19% | 0.884 | 14 | Not predicted | Not predicted |
+| UJIIndoorLoc paper, as published | 89.92% | Not reported | 3 | Not reported | 7.9 m |
+
+The differences in accuracy amount to a few rows, within about ±1.7 percentage points of uncertainty for a test this size, so **these methods are effectively tied on the test file**. The final model was already fixed when 1-nearest neighbor was scored, and it was not changed afterward.
+
+The rerun of the paper's method treats "not detected" as -100, and does not copy the paper's voting step for ties, so it does not match the published result exactly. Using `+100` as in the files gives 75.34%.
+
+### Person-grouped CV
+
+Macro F1 and accuracy, mean ± SD:
+
+| Setup | Stratified 5-fold F1 | Stratified 5-fold accuracy | Other groupings F1 | Other groupings accuracy |
+| :--- | :---: | :---: | :---: | :---: |
+| **SVM, filtered hybrid, tuned (final)** | **0.851 ± 0.100*** | **0.885 ± 0.065*** | **0.775 ± 0.147** | **0.814 ± 0.117** |
+| 1-nearest neighbor (paper's method) | 0.842 ± 0.103 | 0.872 ± 0.073 | 0.764 ± 0.167 | 0.787 ± 0.165 |
+| SVM, MI (original) | 0.780 ± 0.051 | 0.849 ± 0.045 | 0.737 ± 0.149 | 0.778 ± 0.148 |
+| SVM, all access points (baseline) | 0.724 ± 0.123 | 0.727 ± 0.119 | 0.655 ± 0.119 | 0.655 ± 0.142 |
+
+\* Optimistic, because the settings were tuned on these folds.
+
+Fold-by-fold macro F1 difference for the final model:
+
+| Compared with | Stratified 5-fold | Other groupings (15 folds) |
+| :--- | :---: | :---: |
+| SVM, all access points | +0.127, higher in 5 of 5 | +0.120, higher in 14 of 15 |
+| SVM, MI (original) | +0.071, higher in 4 of 5 | +0.038, higher in 11 of 15 |
+| 1-nearest neighbor | +0.009, higher in 3 of 5 | +0.011, higher in 10 of 15 |
+
+Before tuning, on the stratified folds, the best setups were two-stage gradient boosting with relative input (0.840 ± 0.096), SVM with filtered hybrid (0.804 ± 0.071), and SVM with MI and relative input (0.793 ± 0.079). All 18 setups are in `output/smartindoor/architecture_comparison.csv`.
+
+### Final model per class, official test file
+
+| Class | Precision | Recall | F1 | Rows |
+| :--- | :---: | :---: | :---: | :---: |
+| `0_0` | 0.941 | 0.821 | 0.877 | 78 |
+| `0_1` | 0.936 | 0.981 | 0.958 | 208 |
+| `0_2` | 0.958 | 0.964 | 0.961 | 165 |
+| `0_3` | 1.000 | 0.976 | 0.988 | 85 |
+| `1_0` | 0.574 | 0.900 | 0.701 | 30 |
+| `1_1` | 0.980 | 0.671 | 0.797 | 143 |
+| `1_2` | 0.741 | 0.954 | 0.834 | 87 |
+| `1_3` | 0.896 | 0.915 | 0.905 | 47 |
+| `2_0` | 0.846 | 0.917 | 0.880 | 24 |
+| `2_1` | 0.939 | 0.973 | 0.956 | 111 |
+| `2_2` | 0.957 | 0.833 | 0.891 | 54 |
+| `2_3` | 0.841 | 0.925 | 0.881 | 40 |
+| `2_4` | 0.897 | 0.897 | 0.897 | 39 |
+
+Of the 105 errors, 102 are the correct building but the wrong floor. Building 1 is the weakest. The confusion matrix is in `output/smartindoor/final/confusion_matrix.png`.
+
+### Coordinate error
+
+| | Mean, all rows | Median, all rows | 95th percentile | Mean, correct location |
+| :--- | :---: | :---: | :---: | :---: |
+| **Official test file** | **8.92 m** | 5.93 m | 26.67 m | 7.80 m |
+
+In CV, mean error over all rows is 11.04 ± 3.05 m on the stratified folds and 12.37 ± 4.89 m on the other groupings. On the test file, mean error is 6.37 m in Building 0, 10.56 m in Building 1, and 12.15 m in Building 2.
+
+### Clustering check
+
+K-means clustering on the training file, without labels, recovers the buildings better than the 13 classes. Adjusted Rand index (ARI) is 0.62 to 0.63 for buildings with 3 clusters and 0.27 to 0.32 for classes with 13 clusters. Within each building, ARI for floors is 0.27 in Building 0, 0.05 in Building 1, and 0.29 in Building 2. The silhouette score has no peak at 13 clusters, rising from 0.21 there to 0.27 at 30, the most tested. With 13 clusters, normalized mutual information is higher with users (0.42) than with floors (0.26). Results are in `output/smartindoor/final/clustering_*.csv`.
+
+---
+
+## 8. Limitations
+
+- **The test file's people are unidentified.** The paper reports that user IDs were not recorded in that phase, and phones 13 and 14 appear in both phases. So the test score cannot be described as performance on proven new people. The person-grouped CV scores address that question.
+- **Earlier use of the test file.** The original 90.19% model had already been scored on this file before the final model was developed, and one early comparison used it as development data. Its scores were discarded, and the final settings were chosen using only the training file.
+- **Some test coordinates may be predictions.** When a user confirmed a location shown by the collection app, the app stored that predicted location. Test coordinate errors may therefore be somewhat optimistic.
+- **Few people per floor.** Building 0 was surveyed by only two people in the training file.
+- **Confidence runs low.** Mean confidence on the test file is 80%, against 90.55% accuracy.
+- **Tuning is not fully independent.** The same 18 people appear in all CV groupings.
+
+---
+
+## 9. Repository Structure
+
+```text
+SmartIndoor/
+├── data/                       # UJIIndoorLoc training and official test files
+├── output/
+│   ├── smartindoor/
+│   │   ├── architecture_comparison*.csv   # 5-fold CV for all 18 setups
+│   │   ├── tuning_*.csv                   # Tuning grid and recheck
+│   │   ├── final/                         # Final model, test results, coordinates
+│   │   └── ...                            # Original 64-setup experiment results
+│   └── ...                     # 2019 baseline results
+├── scripts/                    # 2019 baseline code
+├── smartindoor/
+│   ├── data.py                 # Data loading and target creation
+│   ├── feature_selection.py    # MI, ANOVA, hybrid, correlation filtering
+│   ├── models.py               # Classifiers, relative input, two-stage model
+│   ├── compare.py              # 5-fold person-grouped comparison
+│   ├── tune.py                 # Finalist tuning and recheck
+│   ├── final.py                # Final model and test evaluation
+│   ├── coordinates.py          # Coordinate prediction and paper's method
+│   ├── clustering.py           # Unsupervised check of the classes
+│   ├── experiment.py           # Original 64-setup experiment
+│   └── dashboard.py            # Streamlit dashboard
+├── Main.m                      # MATLAB entry point
+├── main.py                     # Command-line entry point
+└── requirements.txt
 ```
 
 ---
 
-## 12. Dashboard Overview
+## 10. Credits and License
 
-The **SmartIndoor** dashboard provides:
-1. **Interactive Fingerprint Input:** Accepts direct JSON payloads (e.g. `{"WAP011": -60, "WAP012": -61}`) or uploaded single-row CSV files.
-2. **Location Prediction:** Displays predicted Building and Floor with large status metrics.
-3. **Calibrated Confidence:** Displays posterior probability generated by the sigmoid-calibrated SVM.
-4. **Experimental Visualizations:**
-   - Model comparison bar chart with score annotations.
-   - Feature selection scaling curve comparing MI, ANOVA, and Hybrid strategies.
-   - Annotated 13×13 confusion matrix on the official validation dataset.
-   - Interactive cross-validation leaderboard table.
+This project builds on baseline code by Ryan Clark, Matt Hong, and So Sosaki (2019), released under the MIT License. See [LICENSE](LICENSE). The dataset and the 1-nearest neighbor benchmark are from Torres-Sospedra et al. (2014).
 
----
+### Team contributions
 
-## 13. Team Contributions
-
-| Team Member | Primary Roles & Responsibilities |
+| Role | Responsibilities |
 | :--- | :--- |
 | **Lead ML Engineer** | Architecture design, scikit-learn pipeline construction, probability calibration, and leak-free CV splitting. |
 | **Data & Feature Specialist** | UJIIndoorLoc preprocessing, WAP sentinel normalization, MI & ANOVA hybrid ranking, and correlation filtering. |
 | **UI & Systems Developer** | Streamlit dashboard design, MATLAB `Main.m` runner, chart styling, and input validation. |
 | **Research & Documentation** | Experimental audit, metrics verification, literature review, and academic report compilation. |
 
----
+To cite this project:
 
-## 14. Repository Structure
-
-```text
-Localization_via_WiFi_Fingerprinting-master/
-├── data/
-│   ├── trainingData.csv                # 19,937 UJIIndoorLoc training fingerprints
-│   └── validationData.csv              # 1,111 official validation fingerprints
-├── output/
-│   └── smartindoor/
-│       ├── best_model.joblib           # Trained calibrated SVM model
-│       ├── confusion_matrix.csv        # 13x13 numerical confusion matrix
-│       ├── confusion_matrix.png        # Publication-quality annotated matrix plot
-│       ├── cross_validation_results.csv# All 64 experimental CV scores
-│       ├── feature_selection_comparison.png # Strategy scaling curves
-│       ├── model_comparison.png        # Model performance bar chart
-│       ├── model_metadata.json         # Feature names, model params, validation scores
-│       ├── official_validation_metrics.csv # Overall official test scores
-│       └── per_class_metrics.csv       # Class-level precision, recall, F1, support
-├── scripts/                            # Preserved 2019 baseline source files
-│   ├── errors.py
-│   ├── models.py
-│   ├── plots.py
-│   └── utils.py
-├── smartindoor/                        # SmartIndoor production package
-│   ├── __init__.py
-│   ├── dashboard.py                    # Streamlit web interface
-│   ├── data.py                         # Leakage-safe data loader & target creator
-│   ├── experiment.py                   # 64-config CV and validation runner
-│   ├── feature_selection.py            # MI, ANOVA, Hybrid, and Correlation Selector
-│   └── models.py                       # Model pipelines & classifier factories
-├── Main.m                              # Faculty MATLAB entry point
-├── main.py                             # Main command-line experiment launcher
-├── requirements.txt                    # Python package dependencies
-└── README.md                           # Complete academic project documentation
-```
-
----
-
-## 15. Citation & License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-If using this implementation in academic work, please cite:
 ```bibtex
 @misc{smartindoor2026,
   title={SmartIndoor: Improved Wi-Fi Fingerprinting-Based Indoor Localization Using Hybrid Feature Selection and Machine Learning},

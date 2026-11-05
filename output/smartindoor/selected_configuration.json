@@ -1,0 +1,13 @@
+{
+  "configuration": "SVM, ANOVA",
+  "stages": 1,
+  "model": "SVM (RBF)",
+  "selection": "anova",
+  "n_features": 150,
+  "relative_input": false,
+  "cv_seed": 0,
+  "macro_f1_mean": 0.7538338857643477,
+  "macro_f1_std": 0.04518129014355011,
+  "accuracy_mean": 0.8339841823186009,
+  "accuracy_std": 0.04047488902668793
+}

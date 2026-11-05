@@ -45,6 +45,7 @@ from scripts.models import (load_KNN, load_Random_Forest, load_SVM,
                            load_Decision_Tree, threshold_variance, pca)
 
 # Libraries
+import os
 from time import time
 from sklearn.model_selection import train_test_split
 from matplotlib.pyplot import close, ioff, ion
@@ -268,6 +269,36 @@ def _run_original_baseline():
     print("Program Timer: %.2f seconds" % (toc-tic))
 
 
+def _run_final_pipeline(score_test, retune):
+    """Compare models with CV, then fit and score the final model."""
+    # Parallel workers inherit this. It hides thousands of repeated library warnings.
+    os.environ.setdefault("PYTHONWARNINGS", "ignore::UserWarning")
+
+    from smartindoor.compare import run_comparison
+    from smartindoor.coordinates import run_cv, run_test
+    from smartindoor.final import run_final
+    from smartindoor.tune import run_tuning
+
+    tic = time()
+    if retune:
+        print("\n===== Tuning finalists =====", flush=True)
+        run_tuning()
+    print("\n===== Step 1 of 4: model comparison (training file only) =====", flush=True)
+    run_comparison()
+    print("\n===== Step 2 of 4: classifier check and coordinate CV (training file only) =====", flush=True)
+    run_cv()
+    if score_test:
+        print("\n===== Step 3 of 4: final classifier on the official test file =====", flush=True)
+        print("Final model: tuned SVM with correlation-filtered hybrid selection.", flush=True)
+        run_final()
+        print("\n===== Step 4 of 4: coordinate error on the official test file =====", flush=True)
+        run_test()
+    else:
+        print("\nSkipped steps 3 and 4, so the official test file was not read.", flush=True)
+    print("\nAll results are in output/smartindoor/ and output/smartindoor/final/.")
+    print("Total time: %.0f seconds" % (time() - tic), flush=True)
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -275,11 +306,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--baseline", action="store_true", help="run the preserved 2019 baseline"
     )
-    parser.add_argument("--folds", type=int, default=3, help="grouped CV folds")
+    parser.add_argument(
+        "--original", action="store_true", help="run the original 64-setup experiment"
+    )
+    parser.add_argument(
+        "--folds", type=int, default=3, help="grouped CV folds for --original"
+    )
+    parser.add_argument(
+        "--no-test", action="store_true", help="do not read the official test file"
+    )
+    parser.add_argument(
+        "--tune", action="store_true", help="also repeat the finalist tuning (about 40 minutes)"
+    )
     arguments = parser.parse_args()
     if arguments.baseline:
         _run_original_baseline()
-    else:
+    elif arguments.original:
         from smartindoor.experiment import run_experiment
 
         run_experiment(n_splits=arguments.folds)
+    else:
+        _run_final_pipeline(not arguments.no_test, arguments.tune)
