@@ -15,8 +15,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 OUTPUT_DIR = ROOT / "output" / "smartindoor"
-MODEL_PATH = OUTPUT_DIR / "best_model.joblib"
-METADATA_PATH = OUTPUT_DIR / "model_metadata.json"
+FINAL_DIR = OUTPUT_DIR / "final"
+MODEL_PATH = FINAL_DIR / "final_model.joblib"
+METADATA_PATH = FINAL_DIR / "model_metadata.json"
 
 st.set_page_config(page_title="SmartIndoor - Wi-Fi Localization", page_icon="⌖", layout="wide")
 st.title("SmartIndoor")
@@ -178,66 +179,78 @@ with right:
 st.divider()
 
 st.subheader("Experimental Performance & Validation")
-metrics_path = OUTPUT_DIR / "official_validation_metrics.csv"
+metrics_path = FINAL_DIR / "test_metrics.csv"
 if metrics_path.exists():
     metrics = pd.read_csv(metrics_path).iloc[0]
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Official Validation Accuracy", f"{metrics['accuracy']:.2%}")
-    col2.metric("Validation Macro F1", f"{metrics['macro_f1']:.4f}")
+    col1.metric("Official Test Accuracy", f"{metrics['accuracy']:.2%}")
+    col2.metric("Test Macro F1", f"{metrics['macro_f1']:.4f}")
     col3.metric("Macro Precision", f"{metrics['macro_precision']:.4f}")
     col4.metric("Macro Recall", f"{metrics['macro_recall']:.4f}")
+
+coordinates_path = FINAL_DIR / "coordinate_test_results.csv"
+if coordinates_path.exists():
+    final_errors = pd.read_csv(coordinates_path).iloc[0]
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Mean Coordinate Error", f"{final_errors['error_all_mean']:.2f} m")
+    col2.metric("Median Coordinate Error", f"{final_errors['error_all_median']:.2f} m")
+    col3.metric(
+        "Mean Error, Correct Building and Floor",
+        f"{final_errors['error_correct_location_mean']:.2f} m",
+    )
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "📊 Model Comparison",
     "📈 Feature Selection Curves",
     "🎯 Confusion Matrix & Class Metrics",
-    "📋 Cross-Validation Leaderboard",
+    "📋 5-Fold CV Leaderboard",
 ])
 
 with tab1:
-    comparison_path = OUTPUT_DIR / "model_comparison.png"
+    comparison_path = OUTPUT_DIR / "architecture_comparison.csv"
     if comparison_path.exists():
-        st.image(str(comparison_path), caption="Grouped Cross-Validation: Best Macro F1 by Model Architecture")
+        comparison = pd.read_csv(comparison_path, index_col="configuration")
+        st.markdown("**Mean Macro F1, 5-Fold Person-Grouped CV (default settings)**")
+        st.bar_chart(comparison["macro_f1_mean"], horizontal=True)
     else:
-        st.info("Run `python main.py` to generate the model comparison chart.")
+        st.info("Run `python main.py` to generate the model comparison.")
 
 with tab2:
     fs_path = OUTPUT_DIR / "feature_selection_comparison.png"
     if fs_path.exists():
-        st.image(str(fs_path), caption="Grouped Cross-Validation: Feature Selection Strategy Scaling vs Feature Budget")
+        st.image(str(fs_path), caption="Original 3-Fold Experiment: Feature Selection Strategy vs Number of Access Points")
     else:
         st.info("Run `python main.py` to generate the feature selection comparison chart.")
 
 with tab3:
-    cm_path = OUTPUT_DIR / "confusion_matrix.png"
-    per_class_path = OUTPUT_DIR / "per_class_metrics.csv"
+    cm_path = FINAL_DIR / "confusion_matrix.png"
+    per_class_path = FINAL_DIR / "per_class_metrics.csv"
     col_cm, col_pc = st.columns([1, 1], gap="medium")
     with col_cm:
         if cm_path.exists():
-            st.image(str(cm_path), caption="Confusion Matrix on Official Validation Set (13 Building-Floor Classes)")
+            st.image(str(cm_path), caption="Confusion Matrix on the Official Test File (13 Building-Floor Classes)")
     with col_pc:
         if per_class_path.exists():
-            st.markdown("**Per-Class Official Validation Metrics**")
+            st.markdown("**Per-Class Official Test Metrics**")
             per_class_df = pd.read_csv(per_class_path)
             st.dataframe(per_class_df.style.format({
                 "precision": "{:.3f}",
                 "recall": "{:.3f}",
                 "f1-score": "{:.3f}",
                 "support": "{:.0f}",
-            }), use_container_width=True, hide_index=True)
+            }), width="stretch", hide_index=True)
 
 with tab4:
-    results_path = OUTPUT_DIR / "cross_validation_results.csv"
+    results_path = OUTPUT_DIR / "architecture_comparison.csv"
     if results_path.exists():
-        results = pd.read_csv(results_path).sort_values("macro_f1", ascending=False)
-        st.markdown(f"**Complete Cross-Validation Results ({len(results)} Experimental Configurations)**")
+        results = pd.read_csv(results_path).sort_values("macro_f1_mean", ascending=False)
+        columns = [
+            "configuration", "macro_f1_mean", "macro_f1_std", "accuracy_mean",
+            "accuracy_std", "building_accuracy_mean", "building_accuracy_std",
+        ]
+        st.markdown(f"**5-Fold Person-Grouped CV ({len(results)} Setups, Default Settings)**")
         st.dataframe(
-            results.style.format({
-                "accuracy": "{:.4f}",
-                "macro_f1": "{:.4f}",
-                "macro_precision": "{:.4f}",
-                "macro_recall": "{:.4f}",
-            }),
-            use_container_width=True,
+            results[columns].style.format({column: "{:.4f}" for column in columns[1:]}),
+            width="stretch",
             hide_index=True,
         )
